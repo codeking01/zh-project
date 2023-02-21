@@ -180,13 +180,20 @@ def get_train_test_data(x_data=None, y_data=None):
     X_test = []
     Y_train = []
     Y_test = []
+    iter_index = 1
     for i in range(x_data.shape[0]):
-        if i % 2 == 0:
+        # 3 个一组 1 3 训练 2 测试
+        if iter_index == 4:
+            iter_index = 1
             X_train.append(x_data[i, :])
             Y_train.append(y_data[i])
-        else:
+        elif iter_index == 2:
             X_test.append(x_data[i, :])
             Y_test.append(y_data[i])
+        else:
+            X_train.append(x_data[i, :])
+            Y_train.append(y_data[i])
+        iter_index += 1
     X_train = np.array(X_train)
     X_test = np.array(X_test)
     Y_train = np.array(Y_train)
@@ -233,7 +240,8 @@ def get_invert_y(y_develop_data=None, y_verify_data=None):
 
 
 def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_pred_data=None, final_cols=None,
-                  y_filename=None, traverse_index=None):
+                  y_filename=None, traverse_index=None, start_month=None,
+                  max_progress_row=20, data_interval=10):
     """
     :param x_develop_data:
     :param x_pred_data:
@@ -242,13 +250,16 @@ def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_
     :param final_cols: 可用的列
     :param y_filename: 根据月份的y的文件位置
     :param traverse_index: 遍历次数，可用乘一个固定数，这样让excel的数据加进去
+    :param start_month: 开始月份
+    :param max_progress_row: 列的列表 最长 默认给了20
+    :param data_interval: excel间隔，默认为10
     :return:
     """
     the_column = 88
     for index in range(len(final_cols)):
         current_index = final_cols[index]
-        y_develop_data_curr = y_develop_data[current_index]
-        y_verify_data_curr = y_pred_data[current_index]
+        y_develop_data_curr = y_develop_data[index]
+        y_verify_data_curr = y_pred_data[index]
         # 拷贝原数据，这个画图还是需要使用以前的数据
         Y_develop_data_orinal = copy.deepcopy(y_develop_data_curr)
         Y_verify_data_orinal = copy.deepcopy(y_verify_data_curr)
@@ -265,7 +276,7 @@ def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_
         # 开始训练模型
         from sklearn.ensemble import RandomForestClassifier
         # 设置训练次数
-        train_numbers = 100
+        train_numbers = 15
         # 获取模型  随机森林
         Rfc = RandomForestClassifier()
         model_name = "Rfc"
@@ -277,28 +288,103 @@ def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_
         verify_y1 = accuracy_score(Y_verify_data.astype(float), Rfc_pred)
 
         # todo 每个阶段不一样，后面这个会变动
-        # gen_images(iter_left_data=base_Xdata, iter_right_verify=Verify_Xdata, files_name="x_images", titles=all_titles)
         write_images(data_left=Y_develop_data_orinal, data_right=Y_verify_data_orinal,
                      names=f"{y_filename}/{all_titles[the_column + current_index - 1]}.png", score=verify_y1)
         # 计算准确率
         print('验证集Rfc_acc准确率:', verify_y1)
         #  标签 都加20
-        write_to_excel(start_index=5 + traverse_index * 10, table=table, current_column=1,
-                       content=[f"({y_filename})训练集个数", "随机森林（Rfc）准确率",
+        write_to_excel(start_index=5 + traverse_index * data_interval, table=table, current_column=1,
+                       content=[f"({start_month + traverse_index}月)训练集个数", "随机森林（Rfc）准确率",
                                 "测试集个数", "随机森林（Rfc）准确率",
                                 "验证集个数", "随机森林（Rfc）准确率", ])
         # 将训练集写入到excel中
-        write_to_excel(start_index=5 + traverse_index * 10, table=table, current_column=the_column + index,
+        write_to_excel(start_index=5 + traverse_index * data_interval, table=table, current_column=the_column + index,
                        content=[X_train.shape[0], Rfc_train_acc,
                                 X_test.shape[0], Rfc_acc,
                                 X_verify_data.shape[0], verify_y1])
+        # data_year_list = add_data_year(X_train_num=X_train.shape[0], Rfc_train_acc=Rfc_train_acc,
+        #                                X_test_num=X_test.shape[0], Rfc_test_acc=Rfc_acc,
+        #                                X_verify_data_num=X_verify_data.shape[0],
+        #                                Rfc_verify_acc=verify_y1, data_year_list=data_year_list)
+        # max_progress_row 表示当前最长
+        # 达到一年会写入 目前是根据 traverse_index达到 12
+        write_year_result(the_column=the_column, start_month=start_month, traverse_index=traverse_index, index=index,
+                          data_interval=data_interval)
         data.save(filename)
+
+
+def write_year_result(the_column=None, start_month=None, traverse_index=None, index=None,
+                      data_interval=None, max_progress_row=20):
+    """
+    :param max_progress_row:
+    :param the_column:
+    :param start_month:
+    :param traverse_index:
+    :param index:
+    :param data_interval:
+    :return:
+    """
+    # 达到一年了，计算一下综合的数据，计算准确率
+    if (traverse_index + 1) % 12 == 0:
+        # todo 根据excel去操作
+        # x_train_index=5 + traverse_index * data_interval
+        # x_test_index=5 + traverse_index * data_interval
+        # x_verify_index=5 + traverse_index * data_interval
+        # [x_train_num_right_year, x_train_num_year, x_test_num_right_year, x_test_num_year, x_verify_right_year,
+        #  x_verify_num_year] = data_year_list
+        # x_train_acc_year = x_train_num_right_year / x_train_num_year
+        # x_test_acc_year = x_test_num_right_year / x_test_num_year
+        # x_verify_acc_year = x_verify_right_year / x_verify_num_year
+        write_to_excel(start_index=5 + traverse_index * data_interval + data_interval, table=table, current_column=1,
+                       content=[f"(从{start_month}月开始，一年)训练集个数", "随机森林（Rfc）准确率",
+                                "测试集个数", "随机森林（Rfc）准确率",
+                                "验证集个数", "随机森林（Rfc）准确率", ])
+        # 将训练集写入到excel中
+        write_to_excel(start_index=5 + traverse_index * data_interval + data_interval, table=table,
+                       current_column=the_column + index,
+                       content=["x_train_num_year", "x_train_acc_year",
+                                "x_test_num_year", "x_test_acc_year",
+                                "x_verify_num_year", "x_verify_acc_year"])
+
+
+def add_data_year(X_train_num=None, Rfc_train_acc=None, X_test_num=None, Rfc_test_acc=None, X_verify_data_num=None,
+                  Rfc_verify_acc=None, data_year_list=None):
+    """
+    这个方法没啥用了
+    :param X_train_num:
+    :param Rfc_train_acc:
+    :param X_test_num:
+    :param Rfc_test_acc:
+    :param X_verify_data_num:
+    :param Rfc_verify_acc:
+    :param data_year_list:
+    :return:
+    """
+    # 取出列表数据处理
+    [x_train_num_right_year, x_train_num_year, x_test_num_right_year, x_test_num_year, x_verify_right_year,
+     x_verify_num_year] = data_year_list
+    # 训练个数
+    x_train_num_right_year += X_train_num * Rfc_train_acc
+    x_train_num_year += X_train_num
+    # 测试
+    x_test_num_right_year += X_test_num * Rfc_test_acc
+    x_test_num_year += X_test_num
+    # 验证
+    x_verify_right_year += X_verify_data_num * Rfc_verify_acc
+    x_verify_num_year += X_verify_data_num
+    # 处理好数据再放回
+    temp_list = [x_train_num_right_year, x_train_num_year, x_test_num_right_year, x_test_num_year,
+                 x_verify_right_year,
+                 x_verify_num_year]
+    return temp_list
 
 
 def write_x_images(develop_x_title_data=None, develop_x_data=None, verify_x_data=None, x_filename="x_images"):
     """
-    :param develop_x_title_data: 带标题的
-    :param develop_x_data:
+    :param
+    develop_x_title_data: 带标题的
+    :param
+    develop_x_data:
     :return:
     """
     # 将 建模的X 和 预测的X 传入即可，可先将标题带上
@@ -308,6 +394,45 @@ def write_x_images(develop_x_title_data=None, develop_x_data=None, verify_x_data
                      names=f"{x_filename}/{title_data[i]}.png")
 
 
+def gen_data_year():
+    """ 这个方法没啥用
+    :return: data_year 训练，测试，验证的数据
+    """
+    x_train_num_right_year = 0
+    x_train_num_year = 0
+    x_test_num_right_year = 0
+    x_test_num_year = 0
+    x_verify_right_year = 0
+    x_verify_num_year = 0
+    data_year = [x_train_num_right_year, x_train_num_year, x_test_num_right_year, x_test_num_year, x_verify_right_year,
+                 x_verify_num_year]
+    return data_year
+
+
+def convert_to_month(x_data=None, col=0):
+    """
+    :param x_data:
+    :return: 将第一列(默认)转化为月份
+    """
+    first_row_data = list(x_data[:, col])
+    row_length = len(first_row_data)
+    try:
+        for index in range(row_length):
+            if type(first_row_data[index]) == str:
+                # 判断是否存在 “-”
+                if "-" in first_row_data[index]:
+                    first_row_data[index] = float(first_row_data[index].split("-")[-1])
+                    # 取出最后两位作为月份
+                    # first_row_data[index]=float(first_row_data[index][-2:])
+    except Exception as e:
+        print(e)
+    # 取出最后两位作为月份
+    # first_row_data = [float(item[-2:]) for item in first_row_data]
+    first_row_data = np.array(first_row_data)
+    x_data[:, col] = first_row_data
+    return x_data
+
+
 if __name__ == '__main__':
     # 将表的内容 7个数据表 挨个处理
     # 获取源建模的X数据 传入的对象是获取的excel对象
@@ -315,28 +440,32 @@ if __name__ == '__main__':
     all_titles = init_data[1, :]
     process_title = init_data[1, 3:]
     # 根据月份边际去遍历
-    x_boundary_right = [320, 343, 370, 393, 421, 443, 455]
-    x_boundary_left = [320, 343, 370, 393, 421, 443, 455]
+    x_boundary_right = [173, 204, 224, 248, 273, 296, 320, 343, 370, 393, 421, 443, 455]
+    # x_boundary_left = [320, 343, 370, 393, 421, 443, 455]
     index = 0
+    # 开始月份
+    start_month = 3
     for boundary_index in range(len(x_boundary_right) - 1):
         # 建模数据
         develop_x_data = get_develop_pred_data(excel_data=init_data, boundary_x=[3, x_boundary_right[boundary_index]],
-                                               boundary_y=[4, 87])
+                                               boundary_y=[2, 87])
         develop_x_title_data = get_develop_pred_data(excel_data=init_data,
                                                      boundary_x=[1, x_boundary_right[boundary_index]],
-                                                     boundary_y=[4, 87])
+                                                     boundary_y=[2, 87])
         develop_y_data = get_develop_pred_data(excel_data=init_data, boundary_x=[3, x_boundary_right[boundary_index]],
                                                boundary_y=[87, 106])
 
         # 预测数据
         pred_x_data = get_develop_pred_data(excel_data=init_data, boundary_x=[x_boundary_right[boundary_index],
                                                                               x_boundary_right[boundary_index + 1]],
-                                            boundary_y=[4, 87])
+                                            boundary_y=[2, 87])
         pred_y_data = get_develop_pred_data(excel_data=init_data, boundary_x=[x_boundary_right[boundary_index],
                                                                               x_boundary_right[boundary_index + 1]],
                                             boundary_y=[87, 106])
-
         # 统一关键字
+        # 需要将第一列转化为月份
+        develop_x_data = convert_to_month(x_data=develop_x_data)
+        pred_x_data = convert_to_month(x_data=pred_x_data)
         the_Former_data, the_Verify_TABLE_data, del_list = convert_to_num(develop_x_data, pred_x_data)
         develop_x_title_data = np.delete(develop_x_title_data, del_list, axis=1)
         # 删除缺失值过多的列，并保存del_cols
@@ -356,174 +485,15 @@ if __name__ == '__main__':
         final_cols = get_final_useablecols(develop_y_data, pred_y_data)
         # 获取可以用“列”的Y_data
         Original_YdataList, Pred_YdataList = all_ydata(final_cols, develop_y_data, pred_y_data)
-        # gen_images(iter_left_data=base_Xdata, iter_right_verify=Verify_Xdata, files_name="x_images", titles=all_titles)
-        write_x_images(develop_x_title_data=develop_x_title_data, develop_x_data=base_Xdata, verify_x_data=Verify_Xdata,
-                       x_filename=f"x_images[{x_boundary_right[boundary_index]}]")
+        write_x_images(develop_x_title_data=develop_x_title_data, develop_x_data=base_Xdata,
+                       verify_x_data=Verify_Xdata,
+                       x_filename=f"x_images[{start_month + index}month]")
+        # data_year_init = gen_data_year()
         # 依次遍历每一个Y
-        develop_model(x_develop_data=base_Xdata, x_pred_data=Verify_Xdata, y_develop_data=Original_YdataList,
+        develop_model(x_develop_data=base_Xdata, x_pred_data=Verify_Xdata,
+                      y_develop_data=Original_YdataList,
                       y_pred_data=Pred_YdataList, final_cols=final_cols,
-                      y_filename=f"y_images[{x_boundary_right[boundary_index]}]", traverse_index=index)
+                      y_filename=f"y_images[{start_month + index}month]", traverse_index=index,
+                      start_month=start_month)
         index += 1
     print("运行结束！")
-
-    # for i in range(iter_length):
-    #     # 统一关键字
-    #     the_Former_data, the_Verify_TABLE_data = convert_to_num(all_former_data[i], all_verify_data[i])
-    #     # 删除缺失值过多的列，并保存del_cols
-    #     # tempFormerTwo_data = delAndGetCols(FormerTwo_data)
-    #     base_Xdata, del_cols = delAndGetCols(the_Former_data)
-    #     # 用del_cols删除验证集X不需要的列
-    #     Verify_Xdata = np.delete(the_Verify_TABLE_data, del_cols, axis=1)
-    #     # 降维处理,这个地方只从训练集判断相关性，然后统一降维·
-    #     use_able_x_cols = DataDelete(base_Xdata, 0.80)
-    #     base_Xdata = base_Xdata[:, use_able_x_cols]
-    #     Verify_Xdata = Verify_Xdata[:, use_able_x_cols]
-    #     # 合并数据一起作为训练集
-    #     # all_train_x_data = np.r_[base_Xdata, Verify_Xdata]
-    #
-    #     # base_Xdata,del_cols
-    #     # %%
-    #     # 获取源建模的数据Y_data
-    #     Original_TableTwoYdata, Original_TableThreeYdata, Original_TableFiveYdata, Original_TableSixYdata, Original_TableSevenYdata = get_former_Ydata(
-    #         init_data)
-    #     # 获取预测数据的Y_data
-    #     Predict_TableTwoYdata, Predict_TableThreeYdata, Predict_TableFiveYdata, Predict_TableSixYdata, Predict_TableSevenYdata = get_former_Ydata(
-    #         Preddata)
-    #     all_original_Ydata = [Original_TableTwoYdata, Original_TableThreeYdata, Original_TableFiveYdata,
-    #                           Original_TableSixYdata, Original_TableSevenYdata]
-    #     all_predict_Ydata = [Predict_TableTwoYdata, Predict_TableThreeYdata, Predict_TableFiveYdata,
-    #                          Predict_TableSixYdata, Predict_TableSevenYdata]
-    #     # %%
-    #     # 将Y取出来，然后取出缺失值过多的列
-    #     # 获取可用的列
-    #     Original_TableYdata, Predict_TableYdata = all_original_Ydata[i], all_predict_Ydata[i]
-    #     final_cols = get_final_useablecols(Original_TableYdata, Predict_TableYdata)
-    #     # final_cols
-    #     # %%
-    #     # 获取可以用的Y_data
-    #     Original_YdataList, Pred_YdataList = all_ydata(final_cols, Original_TableYdata, Predict_TableYdata)
-    #     # 合并数据，训练的时候一起
-    #     # all_train_y_data = np.r_[Original_YdataList, Pred_YdataList]
-    #     # %%
-    #     # 挨个遍历，取出有用的Y_data
-    #     # 传入起始的坐标 24,67,108,145,179
-    #     # 传入起始的坐标新表 22,31,50,71,88
-    #     colum_list = [22, 31, 50, 71, 88]
-    #     the_column = colum_list[i]
-    #     start = 0
-    #     for index in final_cols:
-    #         # 建模的Y_data
-    #         Modeling_Y_data = Original_YdataList[start]
-    #         # all_train_y_data全部用来训练
-    #         # Modeling_Y_data = Original_YdataList[:int(Pred_YdataList.shape[0] / 2)+1, :][start]
-    #         # 预测的Y_data，取一半测试，一半预测
-    #         Pred_Y_data = Pred_YdataList[start]
-    #         # Pred_Y_data = Pred_YdataList[int(Pred_YdataList.shape[0] / 2) :, :][start]
-    #         start += 1
-    #         # 处理建模的X_data,Y_data
-    #         temp_OriginalXdata = np.column_stack((base_Xdata, Modeling_Y_data))
-    #         # 删除缺失的行
-    #         temp_OriginalXdata = Del_deletion_data(temp_OriginalXdata, 0)
-    #         # X_data,Y_data 是第一个表处理好的x,y
-    #         X_data = temp_OriginalXdata[:, :-1]
-    #         Y_data = temp_OriginalXdata[:, -1]
-    #         # 处理验证的X_data,Y_data
-    #         # 合并数据
-    #         temp_verifydata = np.column_stack((Verify_Xdata, Pred_Y_data))
-    #         # 删除缺失的行
-    #         temp_verifydata = Del_deletion_data(temp_verifydata, 0)
-    #         # 获取预测数据的X_data，Y_data
-    #         X_verify_data = temp_verifydata[:, :-1]
-    #         Y_verify_data = temp_verifydata[:, -1]
-    #         print(list(set(np.where(np.isnan(temp_OriginalXdata.astype(float)) == True)[0].tolist())),
-    #               list(set(np.where(np.isnan(temp_verifydata.astype(float)) == True)[0].tolist())))
-    #
-    #         # 作图
-    #         # for x_item in range(0,X_data.shape[1]):
-    #         #     # write_image(X_left=X_data[:,x_item], X_right=X_verify_data[:,x_item], names=f"表{i}的{x_item}列")
-    #         #     write_images(X_left=X_data[:,x_item], X_right=X_verify_data[:,x_item], names=f"images/表{i}的{x_item}列.png")
-    #
-    #         if 1 == 1:
-    #             # 将建模Y_data分类(-1,0,1)，并且取出边界值
-    #             # 保留原始的数据
-    #             Y_data_original = copy.deepcopy(Y_data)
-    #             Y_data, Y_data_boundsMin, Y_data_boundsMax = Deal_sorted_Ydata(data=Y_data)
-    #             # 获取预测数据的Y_data Verify_Ydata = Pred_Y_data
-    #             # 保留原始的数据
-    #             Verify_Ydata_original = copy.deepcopy(Y_verify_data)
-    #             Verify_Ydata = deal_verify_ydata(Y_verify_data, Y_data_boundsMin, Y_data_boundsMax)
-    #             # 查看是否替换成功
-    #             print([unique(Y_data), Y_data_boundsMin, Y_data_boundsMax], np.unique(Verify_Ydata))
-    #             # 切分训练数据和测试数据
-    #
-    #             ## 30%测试数据，70%训练数据，stratify=y表示训练数据和测试数据具有相同的类别比例 修改为0.25
-    #             # X_train, X_test, y_train, y_test = train_test_split(X_data, Y_data, test_size=0.25, random_state=4,stratify=Y_data)
-    #             # 手动划分数据集
-    #             X_train, X_test, y_train, y_test = X_data, X_verify_data[:int(X_verify_data.shape[0] / 2) + 1,
-    #                                                        :], Y_data, Y_verify_data[
-    #                                                                    :int(Y_verify_data.shape[0] / 2) + 1]
-    #             # 验证集
-    #             X_verify_data = X_verify_data[int(X_verify_data.shape[0] / 2) + 1:, :]
-    #             Y_verify_data = Y_verify_data[int(Y_verify_data.shape[0] / 2) + 1:]
-    #             from sklearn.metrics import accuracy_score
-    #             # 开始训练模型
-    #             from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-    #
-    #             # 设置训练次数
-    #             train_numbers = 300
-    #             # 获取模型  随机森林
-    #             Rfc = RandomForestClassifier()
-    #             model_name = "Rfc"
-    #             save_model(Rfc, model_name, X_train, X_test, y_train, y_test, train_numbers)
-    #
-    #             # 随便取一个作为训练集的结果
-    #             current_model = joblib.load(filename=f"models/{model_name}/model[0].pkl")
-    #             Rfc_train_acc, Rfc_acc = get_train_test_acc(current_model, X_train, y_train, X_test, y_test)
-    #
-    #             Gbc = GradientBoostingClassifier()
-    #             model_name = "Gbc"
-    #             save_model(Gbc, model_name, X_train, X_test, y_train, y_test, train_numbers)
-    #             current_model = joblib.load(filename=f"models/{model_name}/model[0].pkl")
-    #             Gbc_train_acc, Gbc_acc = get_train_test_acc(current_model, X_train, y_train, X_test, y_test)
-    #             from sklearn.svm import SVC
-    #
-    #             Svc = SVC()
-    #             model_name = "Svc"
-    #             save_model(Svc, model_name, X_train, X_test, y_train, y_test, train_numbers)
-    #             current_model = joblib.load(filename=f"models/{model_name}/model[0].pkl")
-    #             Svc_train_acc, Svc_acc = get_train_test_acc(current_model, X_train, y_train, X_test, y_test)
-    #
-    #             Rfc_pred = get_pred_data("Rfc", X_verify_data)
-    #             Gbc_pred = get_pred_data("Gbc", X_verify_data)
-    #             Svc_pred = get_pred_data("Svc", X_verify_data)
-    #
-    #             verify_y1 = accuracy_score(Y_verify_data.astype(float), Rfc_pred)
-    #             verify_y2 = accuracy_score(Y_verify_data.astype(float), Gbc_pred)
-    #             verify_y3 = accuracy_score(Y_verify_data.astype(float), Svc_pred)
-    #
-    #             verify_dic = {}
-    #             # 取分数最高的点保存
-    #             max_scores = max(verify_y1, verify_y2, verify_y3)
-    #
-    #             # gen_images(iter_left_data=None, iter_right_verify=None, files_name="final_results")
-    #             write_images(data_left=Y_data_original, data_right=Verify_Ydata_original,
-    #                          names=f"final_results/{all_titles[the_column + index - 1]}.png", score=max_scores)
-    #
-    #             # 计算准确率
-    #             print('验证集Rfc_acc准确率:', verify_y1)
-    #             print('验证集Gbc_acc准确率:', verify_y2)
-    #             print('验证集SVC准确率：', verify_y3)
-    #
-    #             #  标签 都加20
-    #             write_to_excel(start_index=5, table=table, current_column=1,
-    #                            content=["训练集个数", "随机森林（Rfc）准确率", "梯度提升树（Gbc）准确率",
-    #                                     "支持向量机(Svc)准确率", "测试集个数", "随机森林（Rfc）准确率",
-    #                                     "梯度提升树（Gbc）准确率", "支持向量机(Svc)准确率", "验证集个数",
-    #                                     "随机森林（Rfc）准确率", "梯度提升树（Gbc）准确率", "支持向量机(Svc)准确率", ])
-    #             # 将训练集写入到excel中
-    #             write_to_excel(start_index=5, table=table, current_column=the_column + index,
-    #                            content=[X_train.shape[0], Rfc_train_acc, Gbc_train_acc, Svc_train_acc, X_test.shape[0],
-    #                                     Rfc_acc, Gbc_acc, Svc_acc,
-    #                                     X_verify_data.shape[0], verify_y1, verify_y2, verify_y3])
-    #
-    #             data.save(filename)

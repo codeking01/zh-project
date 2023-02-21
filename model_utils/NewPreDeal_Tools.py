@@ -4,7 +4,7 @@
     @Data : 2022/6/18 23:55
     @File : PreDeal_Tools.py
 """
-from copy import copy,deepcopy
+from copy import copy, deepcopy
 from math import ceil
 
 # 所有的方法汇总
@@ -18,7 +18,7 @@ def Del_deletion_data(dataValue, flag):
     :param flag: flag是1则删除列，如果是0则删除行
     :return:
     """
-    dataValueCopy= deepcopy(dataValue)
+    dataValueCopy = deepcopy(dataValue)
     # 删除缺失值过多的列
     if flag == 1:
         del_cols = []
@@ -133,6 +133,20 @@ def check_string(data=None):
 
 
 # 处理带关键字的
+def convert_to_float(current_train_col=None, current_pred_col=None):
+    """
+    :param current_train_col:
+    :param current_pred_col:
+    :return:current_train_col, current_pred_col, convert_flag(1成功，0失败)
+    """
+    try:
+        current_train_col = [float(item) for item in current_train_col]
+        current_pred_col = [float(item) for item in current_pred_col]
+        return current_train_col, current_pred_col, 1
+    except Exception as e:
+        return current_train_col, current_pred_col, 0
+
+
 def find_keyword(func):
     def wrapper(*args):
         # 获取列数
@@ -143,14 +157,20 @@ def find_keyword(func):
             current_original_col = args[0][:, i]
             # 判断字符串是否存在
             flag = check_string(data=current_original_col)
-            # 转化类型
+            # 转化类型，存在字符串的，大多是字母，所以处理这个部分即可
             if flag == True:
-                current_pred_col = args[1][:, i]
-                args[0][:, i], args[1][:, i], del_list = func(current_original_col.astype(str),
-                                                              current_pred_col.astype(str), del_list, i)
+                # 有的输入存在问题，需要先处理将所有都转化为数字，如果失败了在考虑去处理关键字
+                args[0][:, i], args[1][:, i], convert_flag = convert_to_float(current_train_col=args[0][:, i],
+                                                                              current_pred_col=args[1][:, i])
+                # 如果转化失败则再处理
+                if convert_flag == 0:
+                    current_pred_col = args[1][:, i]
+                    args[0][:, i], args[1][:, i], del_list = func(current_original_col.astype(str),
+                                                                  current_pred_col.astype(str), del_list, i)
         args0 = np.delete(args[0], del_list, axis=1)
         args1 = np.delete(args[1], del_list, axis=1)
-        return (args0, args1,del_list)
+        return (args0, args1, del_list)
+
     return wrapper
 
 
@@ -167,7 +187,7 @@ def convert_to_num(original_data=None, pred_data=None, del_list=None, index=None
     unique_original_value = np.unique(original_data)
     unique_pred_value = np.unique(pred_data)
     # 取出并集,这个地方只需要判断是否关键字一致
-    intersection = set(unique_original_value) & set(unique_pred_value)
+    intersection = set(unique_original_value) | set(unique_pred_value)
     if len(intersection) == len(unique_original_value):
         # 如果 'nan'在里面,需要删除掉
         if 'nan' in intersection:
