@@ -3,23 +3,28 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from common_utils.regress_method import regress_method as regr
+from common_utils.regress_method import regress_name as rn
 
-from common.StepwiseRegressionFunction import QSPR
+from common_utils.common.StepwiseRegressionFunction import QSPR
 # difine by our group
 # former: from data import XT_SP_d_train, XT_SP_d_test, Y_train, Y_test, cd_n, nY_train, nY_test, XT0_train, XT0_test, cd_e
 # from ML_JuneTask.Pre_data import X_train as XT_SP_d_train,X_test as XT_SP_d_test,y_train as Y_train,y_test as Y_test
 
-def train_model_ad(train_cols=None,cd_n=None,cd_e=None,XT_SP_d_train=None,XT_SP_d_test=None,Y_train=None,Y_test=None):
+# regr='random_forest'
+# rn = 'rf'
+
+warnings.filterwarnings("ignore")
+
+def train_model_ad(n_max=None, cd_n=None, cd_e=None, XT_SP_d_train=None, XT_SP_d_test=None, Y_train=None, Y_test=None,
+                   excel_name=None):
     XT0_train=np.ones(np.shape(Y_train))
     XT0_test=np.ones(np.shape(Y_test))
     nY_train=np.shape(Y_train)[0]
     nY_test=np.shape(Y_test)[0]
     forward = QSPR.ForwardExternal
     status = QSPR.status
-    from regress_method import regress_method as regr
-    from regress_method import regress_name as rn
 
-    warnings.filterwarnings("ignore")
 
     # =============================================================================
     # forward stepwise regression evaluated by external validation
@@ -49,18 +54,19 @@ def train_model_ad(train_cols=None,cd_n=None,cd_e=None,XT_SP_d_train=None,XT_SP_
 
     # =========================================================
     name_initial = f'result_ad_sp_{rn}'
-    name_combination = f'combination_ad_sp_{rn}'
+    # name_combination = f'combination_ad_sp_{rn}'
+    name_combination = f'combination_ad_sp_{excel_name}'
     # =========================================================
 
     ii = []
     II = []
     BB = []
     result = []
-    n_max = train_cols
+    n_max = n_max
     n_ad = 1
     n_ad_t = 1
     n_ad_t_m = 20
-    evl = 'total'
+    evl = 'r2'
     XT_train = copy.deepcopy(XT_SP_d_train)
     XT_test = copy.deepcopy(XT_SP_d_test)
     combination = {}
@@ -81,7 +87,10 @@ def train_model_ad(train_cols=None,cd_n=None,cd_e=None,XT_SP_d_train=None,XT_SP_
 
     cd_n=cd_n
     cd_e=cd_e
-    np.savez(f'{cd_n}{name_initial}.npz', II=II, result=result, BB=BB)
+    # np.savez(f'{cd_n}{name_initial}.npz', II=II, result=result, BB=BB)
+    np.savez(f'{cd_n}ad_ad_result_{excel_name}.npz', II=II, result=result, BB=BB)
     np.save(f'{cd_n}{name_combination}.npy', combination)
     df = pd.DataFrame(result)
-    df.to_excel(f'{cd_e}{name_initial}.xlsx', index=False, header=headers)
+    # df.to_excel(f'{cd_e}{name_initial}.xlsx', index=False, header=headers)
+    df.to_excel(f'{cd_e}{excel_name}.xlsx', index=False, header=headers)
+    return II

@@ -4,7 +4,8 @@
     @Data : 2022/6/18 23:55
     @File : PreDeal_Tools.py
 """
-from copy import copy, deepcopy
+import copy
+from copy import deepcopy
 from math import ceil
 
 # 所有的方法汇总
@@ -44,10 +45,13 @@ def Del_deletion_data(dataValue, flag):
         return final_data, del_cols
     # 删除含有缺失值的行
     elif flag == 0:
-        # 筛选出含有缺失值的行，用set去重
-        del_raws = set(np.where(np.isnan(dataValueCopy.astype(float)) == True)[0].tolist())
-        del_raws = list(del_raws)
-        final_data = np.delete(dataValueCopy, del_raws, axis=flag)
+        try:
+            # 筛选出含有缺失值的行，用set去重
+            del_raws = set(np.where(np.isnan(dataValueCopy.astype(float)) == True)[0].tolist())
+            del_raws = list(del_raws)
+            final_data = np.delete(dataValueCopy, del_raws, axis=flag)
+        except Exception as e:
+            print(f"删除行失败：{e}")
         return final_data
 
 
@@ -84,7 +88,7 @@ def Record_usable_cols(datavalue):
 def Deal_sorted_Ydata(data):
     # 用来记录原顺序的数组，取反
     # order = np.argsort(-data)
-    sort_data = copy(data)
+    sort_data = copy.deepcopy(data)
     sort_data = sorted(sort_data)
     # sorted返回的是数组类型，这个地方需要转成ndarray
     sort_data = np.array(sort_data)
@@ -155,8 +159,9 @@ def find_keyword(func):
         del_list = []
         for i in range(0, all_cols):
             current_original_col = args[0][:, i]
+            current_verify_col = args[1][:, i]
             # 判断字符串是否存在
-            flag = check_string(data=current_original_col)
+            flag = check_string(data=current_original_col) & check_string(data=current_verify_col)
             # 转化类型，存在字符串的，大多是字母，所以处理这个部分即可
             if flag == True:
                 # 有的输入存在问题，需要先处理将所有都转化为数字，如果失败了在考虑去处理关键字
@@ -183,9 +188,12 @@ def convert_to_num(original_data=None, pred_data=None, del_list=None, index=None
     :param index: 当前索引
     :return: 将关键字转化成数字的两个结果,del_list删除的列
     """
+    # 不要破坏原始数据
+    original_data_copy = copy.deepcopy(original_data)
+    pred_data_copy = copy.deepcopy(pred_data)
     # 取出每一列的唯一值
-    unique_original_value = np.unique(original_data)
-    unique_pred_value = np.unique(pred_data)
+    unique_original_value = np.unique(original_data_copy)
+    unique_pred_value = np.unique(pred_data_copy)
     # 取出并集,这个地方只需要判断是否关键字一致
     intersection = set(unique_original_value) | set(unique_pred_value)
     if len(intersection) == len(unique_original_value):
@@ -196,13 +204,13 @@ def convert_to_num(original_data=None, pred_data=None, del_list=None, index=None
         index = -1
         # 把关键字挨个处理
         for i in intersection:
-            original_data = np.where(original_data == f"{i}", index, original_data)
-            pred_data = np.where(pred_data == f"{i}", index, pred_data)
+            original_data_copy = np.where(original_data_copy == f"{i}", index, original_data_copy)
+            pred_data_copy = np.where(pred_data_copy == f"{i}", index, pred_data_copy)
             index += 1
     else:
         # 删除这一列
         del_list.append(index)
-    return original_data, pred_data, del_list
+    return original_data_copy, pred_data_copy, del_list
 
 
 # 删除多余的列，并且返回处理好的数据已经需要删除的列

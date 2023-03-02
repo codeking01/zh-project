@@ -16,6 +16,7 @@ from numpy import unique
 from sklearn.metrics import accuracy_score
 
 from common_utils.DimensionalityReduction import DataDelete
+from common_utils.ad_ad_sp import train_model_ad
 from common_utils.plot_error_distribution import write_images
 from model_utils.NewPreDeal_Tools import Del_deletion_data, get_final_useablecols, all_ydata, \
     delAndGetCols, get_former_Ydata, convert_to_num, deal_verify_ydata, Deal_sorted_Ydata
@@ -166,7 +167,8 @@ def get_develop_pred_data(excel_data=None, boundary_x=None, boundary_y=None):
     :param boundary_y:
     :return:
     """
-    return excel_data[boundary_x[0]:boundary_x[-1], boundary_y[0]:boundary_y[-1]]
+    excel_data_copy=copy.deepcopy(excel_data)
+    return excel_data_copy[boundary_x[0]:boundary_x[-1], boundary_y[0]:boundary_y[-1]]
 
 
 def get_train_test_data(x_data=None, y_data=None):
@@ -241,8 +243,10 @@ def get_invert_y(y_develop_data=None, y_verify_data=None):
 
 def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_pred_data=None, final_cols=None,
                   y_filename=None, traverse_index=None, start_month=None,
-                  max_progress_row=20, data_interval=10):
+                  max_progress_row=20, data_interval=10,
+                  the_column=None):
     """
+    :param the_column: 这个是 out在excel的对应的列号
     :param x_develop_data:
     :param x_pred_data:
     :param y_develop_data:
@@ -255,8 +259,8 @@ def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_
     :param data_interval: excel间隔，默认为10
     :return:
     """
-    the_column = 88
     for index in range(len(final_cols)):
+        # todo 后面想办法改一下，不要通过序列去传递了，很麻烦的！
         current_index = final_cols[index]
         y_develop_data_curr = y_develop_data[index]
         y_verify_data_curr = y_pred_data[index]
@@ -270,8 +274,23 @@ def develop_model(x_develop_data=None, x_pred_data=None, y_develop_data=None, y_
         Y_develop_data, Verify_Ydata = get_invert_y(y_develop_data=Y_develop_data, y_verify_data=Y_verify_data)
         # 手动划分数据集，各自一半，按照奇偶
         X_train, X_test, y_train, y_test = get_train_test_data(x_data=X_develop_data, y_data=Y_develop_data)
-        # 验证集
-        X_verify_data = X_verify_data
+        # ******************************************************
+        # 降维，失败则返回原数据
+        # try :
+        #     # 降维
+        #     II= train_model_ad(n_max=int(X_train.shape[1] / 1.5), cd_n=r"./", cd_e="./", XT_SP_d_train=X_train,
+        #                        XT_SP_d_test=X_test, Y_train=y_train, Y_test=y_test,
+        #                        excel_name=f'{start_month + traverse_index}add_result')
+        #     usable_cols=II[int(X_train.shape[1]/3)]
+        #     X_train=X_train[:,usable_cols]
+        #     X_test=X_test[:,usable_cols]
+        #     # ########################################################
+        #     # 验证集
+        #     X_verify_data = X_verify_data[:,usable_cols]
+        # except Exception as e:
+        #     print(f'降维失败，原因：{e}')
+        # ******************************************************
+        # 验证集 这个可以不写，只是方便查看
         Y_verify_data = Verify_Ydata
         # 开始训练模型
         from sklearn.ensemble import RandomForestClassifier
@@ -414,7 +433,8 @@ def convert_to_month(x_data=None, col=0):
     :param x_data:
     :return: 将第一列(默认)转化为月份
     """
-    first_row_data = list(x_data[:, col])
+    x_data_copy = copy.deepcopy(x_data)
+    first_row_data = list(x_data_copy[:, col])
     row_length = len(first_row_data)
     try:
         for index in range(row_length):
@@ -440,60 +460,77 @@ if __name__ == '__main__':
     all_titles = init_data[1, :]
     process_title = init_data[1, 3:]
     # 根据月份边际去遍历
-    x_boundary_right = [173, 204, 224, 248, 273, 296, 320, 343, 370, 393, 421, 443, 455]
+    x_boundary_bottom = [173, 204, 224, 248, 273, 296, 320, 343, 370, 393, 421, 443, 455]
+    x_train_boundary = [[2, 21], [27, 30], [34, 49], [57, 70], [83, 87]]
+    # 用来验证的数据
+    y_verify_boundary = [[21, 27], [30, 34], [49, 57], [70, 83], [87, 106]]
     # x_boundary_left = [320, 343, 370, 393, 421, 443, 455]
     index = 0
     # 开始月份
     start_month = 3
-    for boundary_index in range(len(x_boundary_right) - 1):
-        # 建模数据
-        develop_x_data = get_develop_pred_data(excel_data=init_data, boundary_x=[3, x_boundary_right[boundary_index]],
-                                               boundary_y=[2, 87])
-        develop_x_title_data = get_develop_pred_data(excel_data=init_data,
-                                                     boundary_x=[1, x_boundary_right[boundary_index]],
-                                                     boundary_y=[2, 87])
-        develop_y_data = get_develop_pred_data(excel_data=init_data, boundary_x=[3, x_boundary_right[boundary_index]],
-                                               boundary_y=[87, 106])
+    for boundary_index in range(len(x_boundary_bottom) - 1):
+        # todo 跑每一道工序的循环
+        for order_index in range(len(x_train_boundary)):
+            order_x_item = x_train_boundary[order_index]
+            order_y_item = y_verify_boundary[order_index]
+            # 建模数据
+            develop_x_data = get_develop_pred_data(excel_data=init_data,
+                                                   boundary_x=[3, x_boundary_bottom[boundary_index]],
+                                                   boundary_y=[2, order_x_item[-1]])
+            develop_x_title_data = get_develop_pred_data(excel_data=init_data,
+                                                         boundary_x=[1, x_boundary_bottom[boundary_index]],
+                                                         boundary_y=[2, order_x_item[-1]])
+            # 获取每一道工序的 y
+            develop_y_data = get_develop_pred_data(excel_data=init_data,
+                                                   boundary_x=[3, x_boundary_bottom[boundary_index]],
+                                                   boundary_y=[order_y_item[0], order_y_item[-1]])
 
-        # 预测数据
-        pred_x_data = get_develop_pred_data(excel_data=init_data, boundary_x=[x_boundary_right[boundary_index],
-                                                                              x_boundary_right[boundary_index + 1]],
-                                            boundary_y=[2, 87])
-        pred_y_data = get_develop_pred_data(excel_data=init_data, boundary_x=[x_boundary_right[boundary_index],
-                                                                              x_boundary_right[boundary_index + 1]],
-                                            boundary_y=[87, 106])
-        # 统一关键字
-        # 需要将第一列转化为月份
-        develop_x_data = convert_to_month(x_data=develop_x_data)
-        pred_x_data = convert_to_month(x_data=pred_x_data)
-        the_Former_data, the_Verify_TABLE_data, del_list = convert_to_num(develop_x_data, pred_x_data)
-        develop_x_title_data = np.delete(develop_x_title_data, del_list, axis=1)
-        # 删除缺失值过多的列，并保存del_cols
-        base_Xdata, del_cols = delAndGetCols(the_Former_data)
-        # 用del_cols删除验证集X不需要的列
-        Verify_Xdata = np.delete(the_Verify_TABLE_data, del_cols, axis=1)
-        develop_x_title_data = np.delete(develop_x_title_data, del_cols, axis=1)
-        # 降维处理,这个地方只从训练集判断相关性，然后统一降维·
-        use_able_x_cols = DataDelete(base_Xdata, 0.80)
-        # 所用可用列的X： base_Xdata
-        base_Xdata = base_Xdata[:, use_able_x_cols]
-        # 获取实际可用列的（行会和Y的数据一起删除） 预测的X数据 Verify_Xdata
-        Verify_Xdata = Verify_Xdata[:, use_able_x_cols]
-        # 获取可用的列
-        develop_x_title_data = develop_x_title_data[0, use_able_x_cols]
-        # 处理预测
-        final_cols = get_final_useablecols(develop_y_data, pred_y_data)
-        # 获取可以用“列”的Y_data
-        Original_YdataList, Pred_YdataList = all_ydata(final_cols, develop_y_data, pred_y_data)
-        write_x_images(develop_x_title_data=develop_x_title_data, develop_x_data=base_Xdata,
-                       verify_x_data=Verify_Xdata,
-                       x_filename=f"x_images[{start_month + index}month]")
-        # data_year_init = gen_data_year()
-        # 依次遍历每一个Y
-        develop_model(x_develop_data=base_Xdata, x_pred_data=Verify_Xdata,
-                      y_develop_data=Original_YdataList,
-                      y_pred_data=Pred_YdataList, final_cols=final_cols,
-                      y_filename=f"y_images[{start_month + index}month]", traverse_index=index,
-                      start_month=start_month)
+            # 预测数据
+            pred_x_data = get_develop_pred_data(excel_data=init_data, boundary_x=[x_boundary_bottom[boundary_index],
+                                                                                  x_boundary_bottom[
+                                                                                      boundary_index + 1]],
+                                                boundary_y=[2, order_x_item[-1]])
+            pred_y_data = get_develop_pred_data(excel_data=init_data, boundary_x=[x_boundary_bottom[boundary_index],
+                                                                                  x_boundary_bottom[
+                                                                                      boundary_index + 1]],
+                                                boundary_y=[order_y_item[0], order_y_item[-1]])
+            # 统一关键字
+
+            # 需要将第一列转化为月份
+            develop_x_data = convert_to_month(x_data=develop_x_data)
+            pred_x_data = convert_to_month(x_data=pred_x_data)
+            the_Former_data, the_Verify_TABLE_data, del_list = convert_to_num(develop_x_data, pred_x_data)
+            develop_x_title_data = np.delete(develop_x_title_data, del_list, axis=1)
+            # 删除缺失值过多的列，并保存del_cols
+            base_Xdata, del_cols = delAndGetCols(the_Former_data)
+            # 用del_cols删除验证集X不需要的列
+            Verify_Xdata = np.delete(the_Verify_TABLE_data, del_cols, axis=1)
+            develop_x_title_data = np.delete(develop_x_title_data, del_cols, axis=1)
+            # 降维处理,这个地方只从训练集判断相关性，然后统一降维·
+            use_able_x_cols = DataDelete(base_Xdata, 0.80)
+            # 所用可用列的X： base_Xdata
+            base_Xdata = base_Xdata[:, use_able_x_cols]
+            # 获取实际可用列的（行会和Y的数据一起删除） 预测的X数据 Verify_Xdata
+            Verify_Xdata = Verify_Xdata[:, use_able_x_cols]
+            # 获取可用的列
+            develop_x_title_data = develop_x_title_data[0, use_able_x_cols]
+            # 处理预测
+            final_cols = get_final_useablecols(develop_y_data, pred_y_data)
+            # 获取可以用“列”的Y_data
+            Original_YdataList, Pred_YdataList = all_ydata(final_cols, develop_y_data, pred_y_data)
+            print(f"当前内循环：{order_y_item[0] + 1}")
+            # todo 降维以后在画图
+            write_x_images(develop_x_title_data=develop_x_title_data, develop_x_data=base_Xdata,
+                           verify_x_data=Verify_Xdata,
+                           x_filename=f"x_images[{start_month + index}month_{order_x_item[-1]}col]")
+            # 依次遍历每一个Y
+
+            the_column_index = order_y_item[0] + 1
+            develop_model(x_develop_data=base_Xdata, x_pred_data=Verify_Xdata,
+                          y_develop_data=Original_YdataList,
+                          y_pred_data=Pred_YdataList, final_cols=final_cols,
+                          y_filename=f"y_images[{start_month + index}month_{order_x_item[-1]}col]",
+                          traverse_index=index,
+                          start_month=start_month, the_column=the_column_index)
         index += 1
     print("运行结束！")
