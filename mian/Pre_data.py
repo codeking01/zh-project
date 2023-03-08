@@ -7,6 +7,7 @@
 """
 import copy
 import os
+import re
 import warnings
 
 import joblib
@@ -21,37 +22,44 @@ from common_utils.plot_error_distribution import write_images
 from model_utils.NewPreDeal_Tools import Del_deletion_data, get_final_useablecols, all_ydata, \
     delAndGetCols, get_former_Ydata, convert_to_num, deal_verify_ydata, Deal_sorted_Ydata
 from plot_utils.build_images.init_build_images import gen_images
+from openpyxl import load_workbook
 
 # warnings.filterwarnings(action='always', category=UserWarning)
 warnings.filterwarnings(action='ignore')
+
+
 # base_data_dirs = "../datas"
 # 这个pandas处理数据效果不太好 建议用numpy
-init_data = pd.read_excel(io=f'data_original.xlsx', sheet_name='所有数据')
-# Preddata = pd.read_excel(io=r'data_original.xlsx', sheet_name='8000D数据标准化-预测用')
-# 用来查看数据结果的excel对象
-from openpyxl import load_workbook
-
-filename = 'data_original.xlsx'
-data = load_workbook(f'{filename}')
-sheetnames = data.sheetnames
-# create_sheet
-if len(sheetnames) < 4:
-    sheetnames.append('预测结果')
-    data.create_sheet(sheetnames[2], len(sheetnames))
-    # 赋值sheet
-    # sheet=data[sheetnames[0]]
-    # content=data.copy_worksheet(sheet)
-    data.save(f'{filename}')
-# 预测结果的excel表
-table = data[sheetnames[-1]]
-sheetnames = data.sheetnames
-table = data[sheetnames[-1]]
-
-# 获取数据表对象(建模和与预测的数据)
-init_data = np.array(init_data)
 
 
-# Preddata = np.array(Preddata)
+def gen_init_data(excel_path=None, excel_sheet=None):
+    """
+    :param excel_path:
+    :param excel_sheet:
+    :return:
+    """
+    init_data = pd.read_excel(io=f'{excel_path}', sheet_name=f'{excel_sheet}')
+    # Preddata = pd.read_excel(io=r'data_original.xlsx', sheet_name='8000D数据标准化-预测用')
+    # 用来查看数据结果的excel对象
+    filename = f'{excel_path}'
+    data = load_workbook(f'{filename}')
+    sheetnames = data.sheetnames
+    # create_sheet
+    if len(sheetnames) < 4:
+        sheetnames.append('预测结果')
+        data.create_sheet(sheetnames[2], len(sheetnames))
+        # 赋值sheet
+        # sheet=data[sheetnames[0]]
+        # content=data.copy_worksheet(sheet)
+        data.save(f'{filename}')
+    # 预测结果的excel表
+    table = data[sheetnames[-1]]
+    sheetnames = data.sheetnames
+    table = data[sheetnames[-1]]
+
+    # 获取数据表对象(建模和与预测的数据)
+    init_data = np.array(init_data)
+    return init_data, table, filename, data
 
 
 # 写入excel文件
@@ -167,7 +175,7 @@ def get_develop_pred_data(excel_data=None, boundary_x=None, boundary_y=None):
     :param boundary_y:
     :return:
     """
-    excel_data_copy=copy.deepcopy(excel_data)
+    excel_data_copy = copy.deepcopy(excel_data)
     return excel_data_copy[boundary_x[0]:boundary_x[-1], boundary_y[0]:boundary_y[-1]]
 
 
@@ -453,14 +461,84 @@ def convert_to_month(x_data=None, col=0):
     return x_data
 
 
+def get_boundary_list(excel_data=None):
+    num=2
+    pattern=f"工序{num}-OUT"
+    # todo
+    pass
+    # if re.match(pattern, cur_data):
+
+    return list
+
+
+def get_month_boundary_list(excel_data=None, start_year=None, start_month=None, pred_count=12, col=2):
+    """
+    :param excel_data:
+    :param start_year:
+    :param start_month:
+    :param pred_count: 取多少个月的次数，因为中间有月份缺失
+    :param col: 从excel第几列开始取数据
+    :return:
+    """
+    start_year = int(start_year)
+    start_month = int(start_month)
+    # 当前匹配的年月份
+    current_date = start_month
+    # 是否匹配到开始月份
+    start_flag = False
+    # 定义正则
+    pattern = r"\d{4}-\d{2}"
+    # 将一列复制出来，转化为列表，并且转化为字符串
+    month_list = copy.deepcopy(excel_data[:, col])
+    # 去掉空格，并且转化为字符串
+    month_list = [str(i) for i in month_list]
+    boundary_list = []
+    date_list = []
+    for i in range(len(month_list)):
+        cur_data = month_list[i]
+        if start_flag:
+            if pred_count > 0:
+                if re.match(pattern, cur_data):
+                    if cur_data != current_date:
+                        current_date = cur_data
+                        # 数据里面的数据有月份缺失
+                        boundary_list.append(i)
+                        date_list.append(current_date)
+                        # 迭代次数减1
+                        pred_count = pred_count - 1
+            else:
+                return boundary_list, date_list
+        else:
+            # 匹配 xxxx-xx
+            if re.match(pattern, cur_data):
+                # 匹配到开始月份
+                if int(cur_data.split('-')[0]) == start_year and int(cur_data.split('-')[-1]) == start_month:
+                    start_flag = True
+                    current_date = cur_data
+                    # 数据里面的数据有月份缺失
+                    boundary_list.append(i)
+                    date_list.append(current_date)
+                    # 迭代次数减1
+                    pred_count = pred_count - 1
+    if len(boundary_list) == 0:
+        raise Exception(f'{start_year}年的{start_month}月份不存在')
+    return boundary_list, date_list
+
+
 if __name__ == '__main__':
+    init_data, table, filename, data = gen_init_data(excel_path="data_original.xlsx", excel_sheet="所有数据")
     # 将表的内容 7个数据表 挨个处理
     # 获取源建模的X数据 传入的对象是获取的excel对象
     # 获取标题内容
     all_titles = init_data[1, :]
     process_title = init_data[1, 3:]
+    # 获取边界的数字
+    month_boundary_list, date_list = get_month_boundary_list(excel_data=init_data, start_year=2021, start_month=3)
+    get_boundary_list()
+
     # 根据月份边际去遍历
-    x_boundary_bottom = [173, 204, 224, 248, 273, 296, 320, 343, 370, 393, 421, 443, 455]
+    # x_boundary_bottom = [173, 204, 224, 248, 273, 296, 320, 343, 370, 393, 421, 443, 455]
+    x_boundary_bottom = copy.deepcopy(month_boundary_list)
     x_train_boundary = [[2, 21], [27, 30], [34, 49], [57, 70], [83, 87]]
     # 用来验证的数据
     y_verify_boundary = [[21, 27], [30, 34], [49, 57], [70, 83], [87, 106]]
